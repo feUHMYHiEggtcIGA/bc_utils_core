@@ -1,18 +1,29 @@
 use std::ops::Index;
+use std::time::{
+    SystemTime,
+    UNIX_EPOCH
+};
+use std::error::Error;
 
 
 pub async fn all_or_nothing<T, F, FUT>(
     func: F,
-) -> T
+    wait_time_sec: f64,
+) -> Result<T, Box<dyn Error>>
 where 
     FUT: Future<Output = Result<T, Box<dyn std::error::Error>>>,
     F: Fn() -> FUT,
 {
     let mut res = func().await;
-    while res.is_err() {
+    let timenow = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs_f64();
+    while {
+        res.is_err()
+        && wait_time_sec != f64::INFINITY
+        && wait_time_sec > SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs_f64() - timenow
+    } {
         res = func().await;
     }
-    res.unwrap()
+    res
 }
 
 pub async fn one_time<'a, T, O, F, FUT>(
