@@ -8,7 +8,7 @@ use std::error::Error;
 
 pub async fn all_or_nothing<T, F, FUT>(
     func: F,
-    wait_time_sec: f64,
+    wait_time_sec: &f64,
 ) -> Result<T, Box<dyn Error>>
 where 
     FUT: Future<Output = Result<T, Box<dyn std::error::Error>>>,
@@ -18,8 +18,8 @@ where
     let timenow = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs_f64();
     while {
         res.is_err()
-        && wait_time_sec != f64::INFINITY
-        && wait_time_sec > SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs_f64() - timenow
+        && *wait_time_sec != f64::INFINITY
+        && *wait_time_sec > SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs_f64() - timenow
     } {
         res = func().await;
     }
