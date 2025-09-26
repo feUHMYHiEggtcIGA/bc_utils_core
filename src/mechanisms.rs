@@ -1,4 +1,3 @@
-use std::ops::Index;
 use std::time::{
     SystemTime,
     UNIX_EPOCH
@@ -26,59 +25,60 @@ where
     res
 }
 
-pub async fn one_time<'a, T, O, F, FUT>(
+pub async fn one_time<T, O, F, K, FUT>(
     func: F,
+    func_key: for<'a> fn(&'a O) -> Result<&'a K, Box<dyn Error>>,
+    func_first_key: for<'a> fn(&'a T) -> Result<&'a K, Box<dyn Error>>,
 ) -> Result<T, Box<dyn Error>>
 where 
     for<'c> &'c T: IntoIterator<Item = &'c O>,
-    T: Index<usize, Output = O>,
-    O: PartialEq,
+    for<'b> &'b K: PartialEq,
     F: Fn() -> FUT,
     FUT: Future<Output = Result<T, Box<dyn Error>>>,
 {
     let mut res = func().await?;
-    let mut first = res.into_iter().next().ok_or(Box::<dyn Error>::from("res first err in one time"))?;
+    let mut first = func_first_key(&res)?;
     while res
         .into_iter()
-        .any(|v| v != first)
+        .any(|v| {
+            let key = func_key(v);
+            match key {
+                Ok(k) => k != first,
+                Err(_) => false
+            }
+        })
     {
         res = func().await?;
-        first = res.into_iter().next().ok_or(Box::<dyn Error>::from("res first err in one time cycle"))?;
+        first = func_first_key(&res)?;
     }
     Ok(res)
 }
 
-pub async fn one_time_hm<'a, H, T, O, F, FUT>(
+pub async fn one_time_hm<T, F, C, K, V, FUT>(
     func: F,
-) -> Result<H, Box<dyn Error>>
-where
+    func_key: for<'d> fn(&'d (&'d K, &'d V)) -> Result<&'d C, Box<dyn Error>>,
+    func_first_key: for<'a> fn(&'a T) -> Result<&'a C, Box<dyn Error>>,
+) -> Result<T, Box<dyn Error>>
+where 
+    for<'c> &'c T: IntoIterator<Item = (&'c K, &'c V)>,
+    for<'b> &'b C: PartialEq,
     F: Fn() -> FUT,
-    FUT: Future<Output =Result <H, Box<dyn Error>>>,
-    for<'b> &'b H: IntoIterator<Item = (&'b &'a str, &'b T)>,
-    for<'b> &'b T: IntoIterator<Item = &'b O>,
-    T: Index<usize, Output = O>,
-    O: PartialEq,
+    FUT: Future<Output = Result<T, Box<dyn Error>>>,
 {
     let mut res = func().await?;
-    let mut first = &res
-        .into_iter()
-        .next()
-        .ok_or(Box::<dyn Error>::from("first err"))
-        ?
-        .1
-        [0];
+    let mut first = func_first_key(&res)?;
     while res
         .into_iter()
-        .any(|v| &v.1[0] != first)
+        .any(|v| {
+            let key = func_key(&v);
+            match key {
+                Ok(k) => k != first,
+                Err(_) => false
+            }
+        })
     {
         res = func().await?;
-        first = &res
-            .into_iter()
-            .next()
-            .ok_or(Box::<dyn Error>::from("first err"))
-            ?
-            .1
-            [0];
+        first = func_first_key(&res)?;
     }
     Ok(res)
 }
